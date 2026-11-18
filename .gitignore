@@ -1,0 +1,11 @@
+# 1. Create a .gitignore
+@'
+venv/
+.plugin-cache/
+__pycache__/
+*.pyc
+.env
+*.tfstate
+*.tfstate.*
+.terraform/
+'@ | Out-File -Encoding utf8 .gitignore

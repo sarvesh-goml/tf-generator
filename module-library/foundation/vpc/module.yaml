@@ -1,0 +1,78 @@
+name: vpc
+category: foundation
+display_name: Network (VPC)
+description: VPC with public/private subnets across AZs, NAT gateway, and routing. Can also wrap an existing VPC.
+selectable: false          # not shown in the UI; pulled in automatically via `requires`
+requires: []
+providers: [aws]
+
+inputs:
+  name_prefix: local.name_prefix
+  create_vpc: var.vpc_create
+  existing_vpc_id: var.vpc_existing_id
+  existing_public_subnet_ids: var.vpc_existing_public_subnet_ids
+  existing_private_subnet_ids: var.vpc_existing_private_subnet_ids
+  vpc_cidr: var.vpc_cidr
+  az_count: var.vpc_az_count
+  enable_nat_gateway: var.vpc_enable_nat_gateway
+  single_nat_gateway: var.vpc_single_nat_gateway
+
+root_variables:
+  vpc_create:
+    type: bool
+    default: false
+    description: "true = build a new dedicated VPC with public + private subnets. false = use the default VPC (or vpc_existing_id if set). The default VPC has public subnets only."
+  vpc_existing_id:
+    type: string
+    default: null
+    description: Use this existing VPC instead of the default VPC (only when vpc_create = false). Also fill the subnet lists below.
+  vpc_existing_public_subnet_ids:
+    type: list(string)
+    default: []
+    description: Existing public subnet IDs (only when vpc_create = false).
+  vpc_existing_private_subnet_ids:
+    type: list(string)
+    default: []
+    description: Existing private subnet IDs (only when vpc_create = false).
+  vpc_cidr:
+    type: string
+    default: 10.0.0.0/16
+    description: CIDR block for the new VPC (only when vpc_create = true).
+  vpc_az_count:
+    type: number
+    default: 2
+    description: Number of availability zones for the new VPC (only when vpc_create = true).
+  vpc_enable_nat_gateway:
+    type: bool
+    default: true
+    description: "NAT gateway so private subnets can reach the internet (only when vpc_create = true). Needed for private EC2/ECS. Costs money hourly; set false if everything runs in public subnets."
+  vpc_single_nat_gateway:
+    type: bool
+    default: true
+    description: One shared NAT gateway (cheaper) instead of one per AZ (highly available).
+
+outputs:
+  network_mode:
+    value: module.vpc.mode
+    description: "Network mode in use: new, default, or existing."
+  vpc_id:
+    value: module.vpc.vpc_id
+    description: VPC ID.
+  public_subnet_ids:
+    value: module.vpc.public_subnet_ids
+    description: Public subnet IDs.
+  private_subnet_ids:
+    value: module.vpc.private_subnet_ids
+    description: Private subnet IDs.
+
+readme_notes: |
+  Pick the network with `vpc_create`:
+
+  | Setting | Network used | Subnets available |
+  |---|---|---|
+  | `vpc_create = false` (default) | The account's default VPC | public only |
+  | `vpc_create = true` | A new dedicated VPC built by this bundle | public + private (+ NAT) |
+  | `vpc_create = false` + `vpc_existing_id` | Your existing VPC | the subnet IDs you list |
+
+  Each service then chooses `public` or `private` with its own `*_subnet_type` variable.
+  Private subnets only exist with a new or existing VPC, not with the default VPC.

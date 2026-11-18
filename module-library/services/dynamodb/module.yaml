@@ -1,0 +1,99 @@
+name: dynamodb
+category: services
+display_name: DynamoDB
+description: DynamoDB table (on-demand by default) with encryption, point-in-time recovery, and optional sort key, TTL, and streams.
+selectable: true
+ui_order: 3
+requires: []
+multi: true
+per_instance: [dynamodb_hash_key, dynamodb_hash_key_type, dynamodb_range_key, dynamodb_range_key_type, dynamodb_billing_mode, dynamodb_ttl_attribute, dynamodb_deletion_protection, dynamodb_stream_view_type]
+instance_only:
+  table_name: string
+providers: [aws]
+
+features:
+  - id: streams
+    label: Streams
+    description: Change feed of item updates (new and old images).
+    variable: dynamodb_stream_view_type
+    value: NEW_AND_OLD_IMAGES
+  - id: ttl
+    label: TTL on "expires_at"
+    description: Items expire automatically at the epoch time in expires_at.
+    variable: dynamodb_ttl_attribute
+    value: expires_at
+  - id: deletion_protection
+    label: Deletion protection
+    description: Blocks table deletion until switched off.
+    variable: dynamodb_deletion_protection
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  stream_view_type: var.dynamodb_stream_view_type
+  hash_key: var.dynamodb_hash_key
+  hash_key_type: var.dynamodb_hash_key_type
+  range_key: var.dynamodb_range_key
+  range_key_type: var.dynamodb_range_key_type
+  billing_mode: var.dynamodb_billing_mode
+  ttl_attribute: var.dynamodb_ttl_attribute
+  deletion_protection: var.dynamodb_deletion_protection
+
+root_variables:
+  dynamodb_hash_key:
+    type: string
+    default: id
+    description: Partition key attribute name.
+  dynamodb_hash_key_type:
+    type: string
+    default: S
+    options: [S, N, B]
+    description: Partition key type (S = string, N = number, B = binary).
+  dynamodb_range_key:
+    type: string
+    default: null
+    description: Optional sort key attribute name.
+  dynamodb_range_key_type:
+    type: string
+    default: S
+    options: [S, N, B]
+    description: Sort key type (S, N, B).
+  dynamodb_billing_mode:
+    type: string
+    default: PAY_PER_REQUEST
+    options: [PAY_PER_REQUEST, PROVISIONED]
+    description: PAY_PER_REQUEST or PROVISIONED.
+  dynamodb_ttl_attribute:
+    type: string
+    default: null
+    description: TTL attribute name (null disables TTL).
+  dynamodb_deletion_protection:
+    type: bool
+    default: false
+    description: Block table deletion. Set true for production.
+  dynamodb_stream_view_type:
+    type: string
+    default: null
+    description: Enable Streams with KEYS_ONLY, NEW_IMAGE, OLD_IMAGE or NEW_AND_OLD_IMAGES. Null means off.
+
+outputs:
+  dynamodb_table_arn:
+    value: module.dynamodb.table_arn
+    description: DynamoDB table ARN.
+  dynamodb_stream_arn:
+    value: module.dynamodb.stream_arn
+    description: Stream ARN (if streams are enabled).
+
+readme_notes: |
+  Tables usually differ in their keys, so set them per table:
+
+  ```hcl
+  dynamodb_instances = {
+    users  = { hash_key = "user_id" }
+    orders = { hash_key = "order_id", range_key = "created_at" }
+  }
+  ```
+
+  Changing later: billing mode, TTL and deletion protection update in place. Changing
+  a `table_name`, `dynamodb_hash_key`, `dynamodb_range_key` or their types **replaces the
+  table and deletes all its data**. Always check `terraform plan` before applying.

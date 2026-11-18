@@ -1,0 +1,152 @@
+name: ec2
+category: deployment
+display_name: EC2
+description: EC2 instances (Amazon Linux 2023) with IMDSv2, encrypted root volumes, SSM access, and their own security groups, spread across availability zones.
+selectable: true
+ui_order: 1
+requires: [vpc]
+multi: true
+per_instance: [ec2_instance_type, ec2_architecture, ec2_ami_id, ec2_key_name, ec2_subnet_type, ec2_root_volume_size, ec2_ingress_rules, ec2_enable_elastic_ip, ec2_data_volume_size, ec2_detailed_monitoring]
+instance_only:
+  subnet_id: string          # pin one instance to an exact subnet
+providers: [aws]
+
+features:
+  - id: elastic_ip
+    label: Elastic IP
+    description: Static public IP that stays the same across stop/start.
+    variable: ec2_enable_elastic_ip
+    value: true
+    requires_setting: { ec2_subnet_type: public }
+    requires_hint: Needs EC2 in a public subnet.
+  - id: data_volume
+    label: Extra data disk (50 GiB)
+    description: Encrypted gp3 EBS volume attached as /dev/sdf.
+    variable: ec2_data_volume_size
+    value: 50
+  - id: detailed_monitoring
+    label: Detailed monitoring
+    description: 1-minute CloudWatch metrics (extra cost).
+    variable: ec2_detailed_monitoring
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  create_elastic_ip: var.ec2_enable_elastic_ip
+  data_volume_size: var.ec2_data_volume_size
+  detailed_monitoring: var.ec2_detailed_monitoring
+  vpc_id: module.vpc.vpc_id
+  subnet_type: var.ec2_subnet_type
+  subnet_index: index(keys(var.ec2_instances), each.key)
+  public_subnet_ids: module.vpc.public_subnet_ids
+  private_subnet_ids: module.vpc.private_subnet_ids
+  instance_type: var.ec2_instance_type
+  architecture: var.ec2_architecture
+  ami_id: var.ec2_ami_id
+  key_name: var.ec2_key_name
+  root_volume_size: var.ec2_root_volume_size
+  ingress_rules: var.ec2_ingress_rules
+
+# Wired only when the named module is also in the bundle.
+optional:
+  s3:
+    inputs:
+      s3_bucket_arns: "[for m in module.s3 : m.bucket_arn]"
+  dynamodb:
+    inputs:
+      dynamodb_table_arns: "[for m in module.dynamodb : m.table_arn]"
+  ecr:
+    inputs:
+      ecr_repository_arns: "[for m in module.ecr : m.repository_arn]"
+
+root_variables:
+  ec2_instance_type:
+    type: string
+    default: t3.micro
+    description: EC2 instance type.
+  ec2_architecture:
+    type: string
+    default: x86_64
+    options: [x86_64, arm64]
+    description: CPU architecture (must match the instance type, e.g. t4g.* is arm64).
+  ec2_ami_id:
+    type: string
+    default: null
+    description: Custom AMI ID. Null uses the latest Amazon Linux 2023.
+  ec2_key_name:
+    type: string
+    default: null
+    description: Optional key pair name for SSH. Prefer SSM Session Manager.
+  ec2_subnet_type:
+    type: string
+    default: public
+    options: [public, private]
+    description: "public = public subnet with a public IP. private = no public IP (needs vpc_create = true or an existing VPC with private subnets)."
+  ec2_root_volume_size:
+    type: number
+    default: 20
+    description: Root volume size in GiB.
+  ec2_ingress_rules:
+    type: "list(object({ description = string, from_port = number, to_port = number, ip_protocol = string, cidr_ipv4 = string }))"
+    default: []
+    description: Inbound security group rules. Empty by default (use SSM Session Manager).
+  ec2_enable_elastic_ip:
+    type: bool
+    default: false
+    description: Attach an Elastic IP (static public IP). Needs a public subnet.
+  ec2_data_volume_size:
+    type: number
+    default: 0
+    description: Size in GiB of an extra encrypted data disk (/dev/sdf). 0 means none.
+  ec2_detailed_monitoring:
+    type: bool
+    default: false
+    description: 1-minute CloudWatch metrics (extra cost).
+
+outputs:
+  ec2_instance_id:
+    value: module.ec2.instance_id
+    description: EC2 instance ID.
+  ec2_private_ip:
+    value: module.ec2.private_ip
+    description: EC2 private IP.
+  ec2_public_ip:
+    value: module.ec2.public_ip
+    description: EC2 public IP (public subnet only).
+  ec2_elastic_ip:
+    value: module.ec2.elastic_ip
+    description: Elastic IP address (if enabled).
+
+readme_notes: |
+  No SSH port is opened by default. Connect with SSM Session Manager instead:
+
+  ```bash
+  terraform output ec2_instance_id            # map of instance name => ID
+  aws ssm start-session --target <instance-id>
+  ```
+
+  Instances are spread across the available subnets (and so across availability zones).
+
+  `ec2_subnet_type` chooses public (default, gets a public IP) or private. Add
+  `ec2_ingress_rules` for any ports you want to open, for example:
+
+  ```hcl
+  ec2_ingress_rules = [
+    { description = "HTTP", from_port = 80, to_port = 80, ip_protocol = "tcp", cidr_ipv4 = "0.0.0.0/0" },
+  ]
+  ```
+
+  Elastic IP: the instance keeps the same public IP across stop/start. Elastic IPs are
+  billed hourly like any public IPv4 address.
+
+  Extra data disk: attached as `/dev/sdf` (shows up as `/dev/nvme1n1` on Nitro
+  instances). Format and mount it once after the first boot:
+
+  ```bash
+  sudo mkfs -t xfs /dev/nvme1n1 && sudo mkdir -p /data && sudo mount /dev/nvme1n1 /data
+  ```
+
+  Changing later: `ec2_instance_type` is updated in place (brief stop/start).
+  `subnet_type`, `subnet_id`, `architecture` and the network replace the
+  instance (new IPs; root volume data is lost). Turning the data disk off or
+  shrinking it deletes the disk and its data.

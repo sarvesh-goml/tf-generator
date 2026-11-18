@@ -1,0 +1,140 @@
+name: ecs
+category: deployment
+display_name: ECS (Fargate)
+description: ECS Fargate cluster and service with an optional public ALB (HTTPS when a certificate is given), container logs, and deployment circuit breaker.
+selectable: true
+ui_order: 2
+requires: [vpc]
+multi: true
+per_instance: [ecs_subnet_type, ecs_container_image, ecs_container_port, ecs_cpu, ecs_memory, ecs_desired_count, ecs_environment_variables, ecs_enable_load_balancer, ecs_certificate_arn, ecs_health_check_path, ecs_autoscaling_max_count, ecs_enable_execute_command]
+providers: [aws]
+
+features:
+  - id: autoscaling
+    label: Auto scaling (up to 4 tasks)
+    description: Adds tasks when average CPU goes above 70%.
+    variable: ecs_autoscaling_max_count
+    value: 4
+  - id: exec
+    label: ECS Exec
+    description: Open a shell in running containers with the AWS CLI.
+    variable: ecs_enable_execute_command
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  autoscaling_max_count: var.ecs_autoscaling_max_count
+  enable_execute_command: var.ecs_enable_execute_command
+  vpc_id: module.vpc.vpc_id
+  subnet_type: var.ecs_subnet_type
+  public_subnet_ids: module.vpc.public_subnet_ids
+  private_subnet_ids: module.vpc.private_subnet_ids
+  container_image: var.ecs_container_image
+  container_port: var.ecs_container_port
+  cpu: var.ecs_cpu
+  memory: var.ecs_memory
+  desired_count: var.ecs_desired_count
+  environment_variables: "merge({ ENVIRONMENT = var.environment }, var.ecs_environment_variables)"
+  enable_load_balancer: var.ecs_enable_load_balancer
+  certificate_arn: var.ecs_certificate_arn
+  health_check_path: var.ecs_health_check_path
+
+optional:
+  s3:
+    inputs:
+      s3_bucket_arns: "[for m in module.s3 : m.bucket_arn]"
+  dynamodb:
+    inputs:
+      dynamodb_table_arns: "[for m in module.dynamodb : m.table_arn]"
+
+root_variables:
+  ecs_subnet_type:
+    type: string
+    default: public
+    options: [public, private]
+    description: "Where tasks run. public = public IP, no NAT needed. private = needs vpc_create = true (with NAT) or an existing VPC with private subnets. The load balancer is always public."
+  ecs_container_image:
+    type: string
+    default: public.ecr.aws/nginx/nginx:stable
+    description: Container image. If you also generated ECR, push your image there and use its repository URL with a tag.
+  ecs_container_port:
+    type: number
+    default: 80
+    description: Port the container listens on.
+  ecs_cpu:
+    type: number
+    default: 256
+    description: Task CPU units.
+  ecs_memory:
+    type: number
+    default: 512
+    description: Task memory in MiB.
+  ecs_desired_count:
+    type: number
+    default: 1
+    description: Number of running tasks.
+  ecs_environment_variables:
+    type: map(string)
+    default: {}
+    description: Extra container environment variables (no secrets).
+  ecs_enable_load_balancer:
+    type: bool
+    default: true
+    description: Put a public Application Load Balancer in front of the service.
+  ecs_certificate_arn:
+    type: string
+    default: null
+    description: ACM certificate ARN to enable HTTPS on the ALB.
+  ecs_health_check_path:
+    type: string
+    default: /
+    description: ALB health check path.
+  ecs_autoscaling_max_count:
+    type: number
+    default: 0
+    description: Scale between ecs_desired_count and this many tasks on CPU (target 70%). 0 means no auto scaling.
+  ecs_enable_execute_command:
+    type: bool
+    default: false
+    description: Allow `aws ecs execute-command` into running containers.
+
+outputs:
+  ecs_cluster_name:
+    value: module.ecs.cluster_name
+    description: ECS cluster name.
+  ecs_service_name:
+    value: module.ecs.service_name
+    description: ECS service name.
+  ecs_service_url:
+    value: module.ecs.service_url
+    description: Public URL of the service (if the ALB is enabled).
+
+readme_notes: |
+  Each entry in `ecs_instances` is a complete, independent stack: its own cluster,
+  service and load balancer. Every load balancer is billed separately.
+
+  The service starts with a public nginx image so the first apply works end to end.
+  To deploy your own app, push it (to ECR or any registry), set `ecs_container_image`
+  and `ecs_container_port`, and apply again.
+
+  `ecs_subnet_type` chooses where tasks run. With `private`, tasks pull images through
+  the NAT gateway, so keep `vpc_enable_nat_gateway = true`. Either way, tasks only accept
+  traffic from the load balancer.
+
+  For HTTPS, request an ACM certificate in the same region and set `ecs_certificate_arn`;
+  HTTP then redirects to HTTPS automatically.
+
+  Auto scaling keeps average CPU near 70% by running between `ecs_desired_count` and
+  `ecs_autoscaling_max_count` tasks. Note that `terraform apply` resets the task count to
+  `ecs_desired_count`; auto scaling adjusts it again within a few minutes.
+
+  ECS Exec (needs the Session Manager plugin for the AWS CLI):
+
+  ```bash
+  aws ecs execute-command --cluster <cluster> --task <task-id> --container app --interactive --command "/bin/sh"
+  ```
+
+  Changing later: image, CPU, memory, desired count and environment variables roll out
+  as a new deployment with no downtime. `ecs_subnet_type` and the network update the
+  service's network settings and restart tasks. `ecs_enable_load_balancer` replaces the
+  service.

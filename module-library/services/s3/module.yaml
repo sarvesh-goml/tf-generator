@@ -1,0 +1,64 @@
+name: s3
+category: services
+display_name: S3
+description: Private S3 bucket with public access blocked, ACLs disabled, encryption, versioning, TLS-only policy, and lifecycle cleanup.
+selectable: true
+ui_order: 2
+requires: []
+multi: true
+per_instance: [s3_force_destroy, s3_enable_versioning, s3_noncurrent_version_expiration_days, s3_transition_to_ia_days]
+instance_only:
+  bucket_name: string        # globally unique; leave out to generate one
+providers: [aws]
+
+features:
+  - id: transition_ia
+    label: Cheaper storage after 30 days
+    description: Moves objects to Standard-IA after 30 days.
+    variable: s3_transition_to_ia_days
+    value: 30
+  - id: force_destroy
+    label: Delete with objects
+    description: terraform destroy empties and removes the bucket.
+    variable: s3_force_destroy
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  transition_to_ia_days: var.s3_transition_to_ia_days
+  force_destroy: var.s3_force_destroy
+  enable_versioning: var.s3_enable_versioning
+  noncurrent_version_expiration_days: var.s3_noncurrent_version_expiration_days
+
+root_variables:
+  s3_force_destroy:
+    type: bool
+    default: false
+    description: Allow destroy even when the bucket has objects.
+  s3_enable_versioning:
+    type: bool
+    default: true
+    description: Keep previous object versions.
+  s3_noncurrent_version_expiration_days:
+    type: number
+    default: 90
+    description: Delete old object versions after N days (null keeps forever).
+  s3_transition_to_ia_days:
+    type: number
+    default: null
+    description: Move objects to cheaper Standard-IA storage after N days (minimum 30). Null keeps everything in Standard.
+
+outputs:
+  s3_bucket_arn:
+    value: module.s3.bucket_arn
+    description: S3 bucket ARN.
+
+readme_notes: |
+  Standard-IA costs less to store but charges per retrieval and has a 30-day minimum,
+  so use it for data that is read rarely.
+
+  Without a `bucket_name`, each bucket gets a unique generated name.
+
+  Changing later: versioning and lifecycle settings update in place. Changing a
+  `bucket_name` in `s3_instances` replaces the bucket: Terraform refuses to delete a non-empty bucket
+  unless `s3_force_destroy = true`, which deletes every object.

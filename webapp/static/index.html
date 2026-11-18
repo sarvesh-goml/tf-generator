@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Terraform bundle builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #ffffff;
+    --surface: #ffffff;
+    --surface-warm: #fff8f3;
+    --ink: #111317;
+    --ink-2: #4a4f59;
+    --muted: #6b7180;
+    --line: #ebe6e1;
+    --line-soft: #f3efeb;
+    --accent: #f7761e;
+    --accent-strong: #e8620a;
+    --accent-ink: #c2510e;
+    --accent-soft: #fff1e6;
+    --accent-line: #fbcfab;
+    --ok: #15803d;
+    --ok-soft: #ecf8f0;
+    --fail: #b42318;
+    --fail-soft: #fdeceb;
+    --warn: #a15c07;
+    --warn-soft: #fff5e1;
+    --code-bg: #fbfaf8;
+    --shadow-sm: 0 1px 2px rgba(17, 19, 23, .04);
+    --shadow-md: 0 8px 24px -10px rgba(17, 19, 23, .14);
+    --sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 15px/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.015em; }
+  button, input, select { font: inherit; color: inherit; }
+  code { font-family: var(--mono); font-size: .92em; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 14px 36px;
+    background: rgba(255, 255, 255, .92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--accent);
+    display: grid; place-items: center; box-shadow: 0 4px 12px -4px rgba(247, 118, 30, .6);
+  }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .brand-name { font-size: 21px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .brand-name b { color: var(--accent); font-weight: 700; }
+  .nav-links { display: flex; gap: 32px; }
+  .nav-links a {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: var(--ink-2); text-decoration: none; font-weight: 500; font-size: 15px;
+  }
+  .nav-links a svg { width: 18px; height: 18px; color: var(--accent); }
+  .nav-links a:hover { color: var(--ink); }
+  .tf-status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px 7px 10px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 13px; color: var(--ink-2); background: var(--surface); box-shadow: var(--shadow-sm);
+    max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .dot.warn { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 13px 24px; border-radius: 999px; border: 1px solid transparent;
+    font-weight: 600; font-size: 15px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: background-color .15s, border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .btn svg { width: 16px; height: 16px; }
+  .btn-dark { background: var(--ink); color: #fff; }
+  .btn-dark:hover { background: #2a2d33; transform: translateY(-1px); }
+  .btn-accent { background: var(--accent); color: #fff; box-shadow: 0 8px 20px -8px rgba(247, 118, 30, .7); }
+  .btn-accent:hover { background: var(--accent-strong); transform: translateY(-1px); }
+  .btn-accent:disabled, .btn-dark:disabled {
+    background: var(--line); color: var(--muted); box-shadow: none; cursor: not-allowed; transform: none;
+  }
+  .btn-outline { background: var(--surface); border-color: var(--line); color: var(--ink); }
+  .btn-outline:hover { border-color: var(--accent-line); background: var(--surface-warm); }
+  .btn-block { width: 100%; }
+  .spinner {
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .45); border-top-color: #fff;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- layout ---------- */
+  main { scroll-margin-top: 70px; }
+  .page {
+    max-width: 1240px; margin: 0 auto; padding: 56px 36px 8px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 44px; align-items: start;
+  }
+  .results-wrap { max-width: 1240px; margin: 0 auto; padding: 16px 36px 72px; }
+  section.group { margin-bottom: 48px; scroll-margin-top: 90px; }
+  .step-label { display: block; color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; margin-bottom: 6px; }
+  section.group > h2 { font-size: 24px; margin-bottom: 4px; }
+  section.group > .hint { margin: 0 0 18px; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 13px; }
+
+  /* ---------- service options ---------- */
+  .options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .option {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
+    transition: border-color .15s, background-color .15s, box-shadow .15s, transform .15s;
+  }
+  .option:hover { border-color: var(--accent-line); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .option-main { position: relative; display: block; cursor: pointer; padding: 18px 18px 18px; flex: 1; }
+  .option-main input { position: absolute; opacity: 0; pointer-events: none; }
+  .option-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .svc-badge {
+    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+    background: var(--accent-soft); color: var(--accent-ink);
+    font: 600 12px var(--mono); letter-spacing: -.02em;
+  }
+  .option .box {
+    width: 22px; height: 22px; border: 1.5px solid #cfc8c1; border-radius: 7px;
+    display: grid; place-items: center; background: #fff; transition: all .15s;
+  }
+  .option .box svg { width: 13px; height: 13px; opacity: 0; }
+  .option input:checked ~ .option-top .box { background: var(--accent); border-color: var(--accent); }
+  .option input:checked ~ .option-top .box svg { opacity: 1; }
+  .option:has(.option-main input:checked) { border-color: var(--accent); background: var(--surface-warm); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md); }
+  .option:has(.option-main input:checked) .svc-badge { background: var(--accent); color: #fff; }
+  .option:has(.option-main input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .option .name { font-weight: 700; font-size: 16px; display: block; }
+  .option .desc {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    font-size: 13px; color: var(--muted); margin-top: 4px;
+  }
+  .option .needs {
+    display: inline-block; font-size: 11.5px; font-weight: 500; color: var(--accent-ink);
+    background: var(--accent-soft); border-radius: 999px; padding: 2px 10px; margin-top: 12px;
+  }
+  .panel-section { padding: 14px 18px 16px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+  .panel-section[hidden] { display: none; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .panel-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+
+  .addon { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; font-size: 13px; line-height: 1.4; }
+  .addon input { margin: 2px 0 0; width: 15px; height: 15px; flex: none; accent-color: var(--accent); }
+  .addon .addon-name { font-weight: 500; }
+  .addon .addon-desc { display: block; color: var(--muted); font-size: 12px; }
+  .addon:has(input:disabled) { cursor: not-allowed; opacity: .55; }
+
+  .stepper { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); overflow: hidden; }
+  .stepper button { width: 30px; border: 0; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; color: var(--ink); }
+  .stepper button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+  .stepper button:disabled { color: var(--line); cursor: not-allowed; }
+  .stepper input {
+    width: 38px; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+    text-align: center; padding: 4px 0; background: transparent; font-weight: 600; -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* ---------- instance names ---------- */
+  .names { display: grid; gap: 6px; }
+  .name-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 6px; }
+  .name-row .idx { font: 500 11px var(--mono); color: var(--muted); text-align: right; }
+  .name-input {
+    width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font: 400 13px var(--mono);
+  }
+  .name-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .name-input[aria-invalid=true] { border-color: var(--fail); box-shadow: 0 0 0 3px var(--fail-soft); }
+  .name-error { grid-column: 2; color: var(--fail); font-size: 11.5px; }
+  .name-error[hidden] { display: none; }
+  .name-hint { font-size: 11.5px; color: var(--muted); word-break: break-all; }
+  .name-hint code { color: var(--accent-ink); }
+
+  /* ---------- settings ---------- */
+  .settings {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px; display: grid; gap: 20px; box-shadow: var(--shadow-sm);
+  }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .field label, .field .label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .field input[type=text], .field select {
+    width: 100%; padding: 10px 12px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  .field input[type=text]:focus, .field select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .field input[type=text][aria-invalid=true] { border-color: var(--fail); }
+  .field .error { color: var(--fail); font-size: 13px; margin-top: 4px; }
+  .field .hint { margin-top: 4px; }
+  .divider { border: 0; border-top: 1px solid var(--line-soft); margin: 0; }
+
+  .segmented { display: inline-flex; padding: 3px; background: var(--line-soft); border-radius: 999px; gap: 2px; }
+  .segmented label { margin: 0; font-weight: 500; cursor: pointer; }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented span { display: block; padding: 6px 16px; border-radius: 999px; font-size: 14px; color: var(--ink-2); transition: all .15s; }
+  .segmented input:checked + span { background: var(--accent); color: #fff; box-shadow: 0 2px 6px -2px rgba(247, 118, 30, .6); }
+  .segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .segmented input:disabled + span { color: var(--muted); cursor: not-allowed; opacity: .5; }
+  .check, .field label.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 14px; font-weight: 400; margin: 0; }
+  .check input { margin: 3px 0 0; width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+
+  /* ---------- bundle panel ---------- */
+  aside.bundle {
+    position: sticky; top: 88px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+    overflow: hidden; box-shadow: var(--shadow-md);
+  }
+  .bundle-head {
+    padding: 18px 20px 14px; border-bottom: 1px solid var(--line-soft);
+    background: linear-gradient(135deg, var(--accent-soft), #fff 70%);
+  }
+  .bundle-head h2 { font-size: 17px; }
+  .bundle-head p { margin: 2px 0 0; }
+  .tree {
+    list-style: none; margin: 0; padding: 12px 0;
+    font: 400 12.5px/2 var(--mono); min-height: 120px; max-height: 46vh; overflow: auto;
+  }
+  .tree li { padding: 0 20px; display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; }
+  .tree li > span:first-child { display: inline-flex; align-items: center; gap: 7px; }
+  .tree .ico { width: 13px; height: 13px; flex: none; color: #b4ada6; }
+  .tree .folder .ico { color: var(--accent); }
+  .tree .d1 { padding-left: 38px; }
+  .tree .d2 { padding-left: 56px; }
+  .tree .folder { font-weight: 500; }
+  .tree .note { font-family: var(--sans); font-size: 11.5px; color: var(--accent-ink); overflow: hidden; text-overflow: ellipsis; }
+  .tree li.fresh { animation: fresh 1.2s ease-out; }
+  @keyframes fresh { from { background: var(--accent-soft); } to { background: transparent; } }
+  .empty { padding: 28px 20px; color: var(--muted); font-size: 14px; font-family: var(--sans); white-space: normal !important; }
+  .bundle-foot { padding: 16px 20px 20px; border-top: 1px solid var(--line-soft); display: grid; gap: 14px; }
+  .working { font-size: 13px; color: var(--muted); }
+
+  /* ---------- results ---------- */
+  #results { scroll-margin-top: 90px; }
+  .result-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow-md); }
+  .banner { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 22px 24px; flex-wrap: wrap; border-bottom: 1px solid var(--line-soft); }
+  .banner.passed { background: linear-gradient(135deg, var(--ok-soft), #fff 75%); }
+  .banner.failed { background: linear-gradient(135deg, var(--fail-soft), #fff 75%); }
+  .banner.skipped { background: linear-gradient(135deg, var(--warn-soft), #fff 75%); }
+  .banner-title { display: flex; align-items: center; gap: 10px; }
+  .banner h2 { font-size: 20px; }
+  .status-chip { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; }
+  .passed .status-chip { background: var(--ok); color: #fff; }
+  .failed .status-chip { background: var(--fail); color: #fff; }
+  .skipped .status-chip { background: var(--warn); color: #fff; }
+  .banner p { margin: 4px 0 0; font-size: 14px; color: var(--ink-2); }
+
+  .rename { padding: 20px 24px 22px; border-bottom: 1px solid var(--line-soft); background: var(--surface-warm); }
+  .rename-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .rename-head h3 { font-size: 16px; }
+  .rename-head p { margin: 2px 0 0; }
+  .rename-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .rename-svc { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 14px; display: grid; gap: 8px; align-content: start; }
+  .rename-svc h4 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .rename-svc h4 .svc-badge { width: 26px; height: 26px; border-radius: 8px; font-size: 10px; background: var(--accent); color: #fff; }
+
+  .result-body { display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+  .steps { padding: 20px 24px; border-right: 1px solid var(--line-soft); }
+  .steps h3, .preview h3 { font-size: 15px; margin-bottom: 12px; }
+  .step { margin-bottom: 8px; font-size: 13px; }
+  .step summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; list-style: none; }
+  .step summary::-webkit-details-marker { display: none; }
+  .mark { font-weight: 700; width: 14px; flex: none; }
+  .mark.ok { color: var(--ok); }
+  .mark.fail { color: var(--fail); }
+  .mark.warn { color: var(--warn); }
+  .step pre { margin: 6px 0 0 22px; max-height: 220px; }
+  .error-box { margin: 20px; padding: 14px 16px; border-radius: 12px; background: var(--fail-soft); color: var(--fail); font-size: 14px; }
+  .preview { padding: 20px 24px; min-width: 0; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tab {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+    padding: 5px 13px; font: 400 12.5px var(--mono); cursor: pointer;
+  }
+  .tab:hover { border-color: var(--accent-line); }
+  .tab[aria-selected=true] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  pre {
+    margin: 0; padding: 16px; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 12px; overflow: auto; font: 400 12.5px/1.65 var(--mono); max-height: 520px; white-space: pre;
+  }
+
+  footer { text-align: center; color: var(--muted); font-size: 13px; padding: 0 16px 40px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1080px) {
+    .nav-links { display: none; }
+  }
+  @media (max-width: 960px) {
+    .page { grid-template-columns: 1fr; padding: 32px 16px 8px; gap: 28px; }
+    .results-wrap { padding: 8px 16px 40px; }
+    aside.bundle { position: static; }
+    .result-body { grid-template-columns: 1fr; }
+    .steps { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+    .options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .nav { padding: 12px 16px; }
+    .tf-status { max-width: 150px; }
+    .options, .row { grid-template-columns: 1fr; }
+    .rename, .banner, .steps, .preview { padding-left: 16px; padding-right: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="#build" aria-label="Terraform bundle builder home">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5h8a2 2 0 0 1 2 2v10"/><path d="M7 5v14h7"/></svg>
+    </span>
+    <span class="brand-name"><b>tf</b>Builder</span>
+  </a>
+  <div class="nav-links">
+    <a href="#build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg>Services</a>
+    <a href="#settingsGroup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</a>
+    <a href="#bundleTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"/></svg>Bundle</a>
+  </div>
+  <div class="tf-status" id="tfStatus"><span class="dot"></span><span>Checking Terraform…</span></div>
+</nav>
+
+<main id="build">
+<div class="page">
+  <div>
+    <div id="groups"></div>
+
+    <section class="group" id="settingsGroup">
+      <span class="step-label" id="settingsStep">Step 03</span>
+      <h2>Settings</h2>
+      <p class="hint">These become the defaults in the bundle. Everything can still be changed later in <code>terraform.tfvars</code>.</p>
+      <div class="settings">
+        <div class="row">
+          <div class="field">
+            <label for="project">Project name</label>
+            <input type="text" id="project" value="myapp" autocomplete="off" spellcheck="false">
+            <div class="hint">Used in every resource name.</div>
+            <div class="error" id="projectError" hidden>2–20 characters: lowercase letters, numbers and hyphens, starting with a letter.</div>
+          </div>
+          <div class="field">
+            <label for="env">Environment</label>
+            <input type="text" id="env" value="dev" autocomplete="off" spellcheck="false">
+            <div class="hint">For example dev, staging, prod.</div>
+            <div class="error" id="envError" hidden>Up to 10 characters: lowercase letters, numbers and hyphens.</div>
+          </div>
+          <div class="field">
+            <label for="region">AWS region</label>
+            <select id="region">
+              <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+              <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+              <option value="us-east-1">us-east-1 (N. Virginia)</option>
+              <option value="us-east-2">us-east-2 (Ohio)</option>
+              <option value="us-west-2">us-west-2 (Oregon)</option>
+              <option value="eu-west-1">eu-west-1 (Ireland)</option>
+              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="networkSettings" hidden>
+          <hr class="divider">
+          <div class="field" style="margin-top:20px">
+            <span class="label" id="networkLabel">Network</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="networkLabel">
+              <label><input type="radio" name="network" value="default" checked><span>Default VPC</span></label>
+              <label><input type="radio" name="network" value="new"><span>New VPC</span></label>
+            </div>
+            <div class="hint" id="networkHint"></div>
+          </div>
+        </div>
+
+        <div class="row" id="placementRow" hidden>
+          <div class="field" id="ec2Placement" hidden>
+            <span class="label" id="ec2Label">EC2 runs in</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="ec2Label">
+              <label><input type="radio" name="ec2Subnet" value="public" checked><span>Public</span></label>
+              <label><input type="radio" name="ec2Subnet" value="private"><span>Private</span></label>
+            </div>
+          </div>
+          <div class="field" id="ecsPlacement" hidden>
+            <span class="label" id="ecsLabel">ECS tasks run in</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="ecsLabel">
+              <label><input type="radio" name="ecsSubnet" value="public" checked><span>Public</span></label>
+              <label><input type="radio" name="ecsSubnet" value="private"><span>Private</span></label>
+            </div>
+          </div>
+          <div class="field" id="lambdaVpc" hidden>
+            <span class="label">Lambda</span>
+            <label class="check"><input type="checkbox" id="lambdaInVpc"><span>Run inside the VPC's private subnets</span></label>
+          </div>
+        </div>
+        <div class="hint" id="privateHint" hidden>Private subnets need a new VPC. The default VPC only has public subnets.</div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="bundle" aria-labelledby="bundleTitle">
+    <div class="bundle-head">
+      <h2 id="bundleTitle">Your bundle</h2>
+      <p class="hint" id="bundleSummary">Nothing selected yet.</p>
+    </div>
+    <ul class="tree" id="tree" aria-live="polite"></ul>
+    <div class="bundle-foot">
+      <label class="check" id="validateWrap">
+        <input type="checkbox" id="validate" checked>
+        <span>Check the bundle with Terraform before download</span>
+      </label>
+      <button class="btn btn-accent btn-block" id="generate" disabled>Generate bundle</button>
+      <div class="working" id="working" hidden></div>
+    </div>
+  </aside>
+</div>
+
+<div class="results-wrap">
+  <section id="results" hidden aria-live="polite"></section>
+</div>
+</main>
+
+<footer>Terraform bundle builder · generated bundles are plain Terraform you own and can edit freely.</footer>
+
+<script>
+const ROOT_FILES = ["main.tf", "variables.tf", "outputs.tf", "providers.tf", "versions.tf",
+                    "backend.tf", "terraform.tfvars.example", "README.md"];
+const CHECK_SVG = '<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2"><path d="M2 6.5l2.5 2.5L10 3"/></svg>';
+const FOLDER_SVG = '<svg class="ico" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3.2l1.5 1.5H13A1.5 1.5 0 0 1 14.5 5.5v6A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5V4Z"/></svg>';
+const FILE_SVG = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 1.5h5L12.5 5v9.5h-8.5Z"/><path d="M9 1.5V5h3.5"/></svg>';
+const BADGES = { lambda: "λ", dynamodb: "DDB" };
+
+let catalog = null;
+let terraform = { available: false };
+const selected = new Set();
+const MAX_COUNT = 20;
+// Instance names per service, in order. They become the keys of <service>_instances,
+// so each one ends up in resource names as <project>-<env>-<name>.
+const names = {};
+const NAME_RE = /^[a-z0-9][a-z0-9-]{0,14}$/;
+const namesOf = (id) => names[id] || (names[id] = ["1"]);
+const countOf = (id) => namesOf(id).length;
+const addons = {};            // service id -> Set of add-on ids
+const addonsOf = (id) => [...(addons[id] || [])];
+let previousTree = new Set();
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const badgeOf = (id) => BADGES[id] || id.slice(0, 3).toUpperCase();
+
+// ---------------------------------------------------------------- catalog
+async function loadCatalog() {
+  try {
+    const res = await fetch("/api/catalog");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not load services.");
+    catalog = data;
+    terraform = data.terraform;
+    renderStatus();
+    renderGroups();
+    update();
+  } catch (err) {
+    $("groups").innerHTML = `<div class="error-box">Could not load the service list: ${esc(err.message)}. Is the server running?</div>`;
+  }
+}
+
+function renderStatus() {
+  const el = $("tfStatus");
+  if (terraform.available) {
+    el.innerHTML = `<span class="dot ok"></span><span>${esc(terraform.version)} ready</span>`;
+  } else {
+    el.innerHTML = `<span class="dot warn"></span><span>Terraform not installed: bundles won't be checked</span>`;
+    $("validate").checked = false;
+    $("validate").disabled = true;
+  }
+  el.title = el.textContent;
+}
+
+function allOptions() {
+  return catalog.groups.flatMap(g => g.options);
+}
+
+function renderGroups() {
+  $("settingsStep").textContent = `Step ${String(catalog.groups.length + 1).padStart(2, "0")}`;
+  $("groups").innerHTML = catalog.groups.map((group, gi) => `
+    <section class="group">
+      <span class="step-label">Step ${String(gi + 1).padStart(2, "0")}</span>
+      <h2>${esc(group.label)}</h2>
+      <p class="hint">${group.id === "deployment" ? "Where your application code runs. Pick one or more." : "Supporting services. Pick any you need."}</p>
+      <div class="options">
+        ${group.options.map(opt => `
+          <div class="option">
+            <label class="option-main">
+              <input type="checkbox" value="${esc(opt.id)}">
+              <span class="option-top">
+                <span class="svc-badge" aria-hidden="true">${esc(badgeOf(opt.id))}</span>
+                <span class="box">${CHECK_SVG}</span>
+              </span>
+              <span class="name">${esc(opt.label)}</span>
+              <span class="desc">${esc(opt.description)}</span>
+              ${opt.auto_includes.length ? `<span class="needs">Adds ${opt.auto_includes.map(d => d.toUpperCase()).join(", ")} networking</span>` : ""}
+            </label>
+            ${opt.multi ? `
+            <div class="panel-section instances" data-for="${esc(opt.id)}" hidden>
+              <div class="panel-head">
+                <label class="panel-title" for="count-${esc(opt.id)}">Instances</label>
+                <div class="stepper">
+                  <button type="button" data-step="-1" aria-label="One fewer ${esc(opt.label)}">−</button>
+                  <input type="number" id="count-${esc(opt.id)}" min="1" max="${MAX_COUNT}" value="1" inputmode="numeric">
+                  <button type="button" data-step="1" aria-label="One more ${esc(opt.label)}">+</button>
+                </div>
+              </div>
+              <div class="names" data-names-for="${esc(opt.id)}"></div>
+              <div class="name-hint">Resource names: <code><span class="name-prefix"></span>&lt;name&gt;</code></div>
+            </div>` : ""}
+            ${opt.features.length ? `
+            <div class="panel-section addons" data-for="${esc(opt.id)}" hidden>
+              <span class="panel-title">Add-ons</span>
+              ${opt.features.map(f => `
+              <label class="addon">
+                <input type="checkbox" data-svc="${esc(opt.id)}" data-feature="${esc(f.id)}">
+                <span><span class="addon-name">${esc(f.label)}</span><span class="addon-desc" data-desc="${esc(f.description)}">${esc(f.description)}</span></span>
+              </label>`).join("")}
+            </div>` : ""}
+          </div>`).join("")}
+      </div>
+    </section>`).join("");
+
+  $("groups").querySelectorAll(".option-main input").forEach(input => {
+    input.addEventListener("change", () => {
+      input.checked ? selected.add(input.value) : selected.delete(input.value);
+      $("groups").querySelectorAll(`.panel-section[data-for="${input.value}"]`)
+        .forEach(el => { el.hidden = !input.checked; });
+      renderRenamePanel();
+      update();
+    });
+  });
+  $("groups").querySelectorAll(".addon input").forEach(box => {
+    box.addEventListener("change", () => {
+      const set = addons[box.dataset.svc] || (addons[box.dataset.svc] = new Set());
+      box.checked ? set.add(box.dataset.feature) : set.delete(box.dataset.feature);
+      update();
+    });
+  });
+  $("groups").querySelectorAll(".instances").forEach(row => {
+    const id = row.dataset.for;
+    const field = row.querySelector('input[type="number"]');
+    row.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => setCount(id, countOf(id) + Number(b.dataset.step))));
+    field.addEventListener("change", () => setCount(id, parseInt(field.value, 10)));
+    setCount(id, 1);
+  });
+}
+
+// ---------------------------------------------------------------- instance names
+function nextDefaultName(list) {
+  for (let i = 1; ; i++) if (!list.includes(String(i))) return String(i);
+}
+
+function setCount(id, n) {
+  n = Math.max(1, Math.min(MAX_COUNT, Number.isFinite(n) ? Math.round(n) : 1));
+  const list = namesOf(id);
+  while (list.length < n) list.push(nextDefaultName(list));
+  list.length = n;
+  const row = $("groups").querySelector(`.instances[data-for="${id}"]`);
+  if (row) {
+    row.querySelector('input[type="number"]').value = n;
+    row.querySelector('[data-step="-1"]').disabled = n <= 1;
+    row.querySelector('[data-step="1"]').disabled = n >= MAX_COUNT;
+  }
+  renderNameLists(id);
+  update();
+}
+
+function nameError(id, i) {
+  const list = namesOf(id);
+  if (!NAME_RE.test(list[i])) return "1–15 lowercase letters, digits or hyphens, starting with a letter or digit.";
+  if (list.indexOf(list[i]) !== i) return "Already used by another instance.";
+  return "";
+}
+
+function namesValid() {
+  return [...selected].every(id => !optionOf(id)?.multi || namesOf(id).every((_, i) => !nameError(id, i)));
+}
+
+// Every list of name fields for a service (on its card and in the rename panel).
+function renderNameLists(id) {
+  const label = labelOf(id);
+  document.querySelectorAll(`.names[data-names-for="${id}"]`).forEach(box => {
+    box.innerHTML = namesOf(id).map((name, i) => `
+      <div class="name-row">
+        <span class="idx">${i + 1}</span>
+        <input class="name-input" type="text" value="${esc(name)}" data-svc="${esc(id)}" data-idx="${i}"
+               maxlength="15" autocomplete="off" spellcheck="false" aria-label="${esc(label)} instance ${i + 1} name">
+        <span class="name-error" hidden></span>
+      </div>`).join("");
+  });
+}
+
+document.addEventListener("input", (e) => {
+  const input = e.target.closest(".name-input");
+  if (!input) return;
+  const clean = input.value.toLowerCase().replace(/[\s_]+/g, "-");
+  if (clean !== input.value) input.value = clean;
+  const { svc, idx } = input.dataset;
+  namesOf(svc)[Number(idx)] = clean;
+  document.querySelectorAll(`.name-input[data-svc="${svc}"][data-idx="${idx}"]`)
+    .forEach(other => { if (other !== input) other.value = clean; });
+  update();
+});
+
+function syncNameErrors() {
+  document.querySelectorAll(".name-input").forEach(input => {
+    const msg = nameError(input.dataset.svc, Number(input.dataset.idx));
+    input.setAttribute("aria-invalid", String(Boolean(msg)));
+    const err = input.parentElement.querySelector(".name-error");
+    err.textContent = msg;
+    err.hidden = !msg;
+  });
+  const prefix = `${$("project").value}-${$("env").value}-`;
+  document.querySelectorAll(".name-prefix").forEach(el => { el.textContent = prefix; });
+}
+
+// ---------------------------------------------------------------- state
+function bundleModules() {
+  const order = allOptions().map(o => o.id);
+  const chosen = order.filter(id => selected.has(id));
+  const deps = new Map(); // dependency -> services that need it
+  for (const opt of allOptions()) {
+    if (!selected.has(opt.id)) continue;
+    for (const dep of opt.auto_includes) {
+      if (!deps.has(dep)) deps.set(dep, []);
+      deps.get(dep).push(opt.label);
+    }
+  }
+  return { chosen, deps };
+}
+
+function optionOf(id) {
+  return allOptions().find(o => o.id === id);
+}
+
+function labelOf(id) {
+  const opt = optionOf(id);
+  return opt ? opt.label : id.toUpperCase();
+}
+
+function networkIsNew() {
+  return document.querySelector('input[name="network"]:checked').value === "new";
+}
+
+function update() {
+  if (!catalog) return;
+  const { chosen, deps } = bundleModules();
+  const hasVpc = deps.has("vpc");
+  const newVpc = networkIsNew();
+
+  // Settings that only matter for some services.
+  $("networkSettings").hidden = !hasVpc;
+  $("networkHint").textContent = newVpc
+    ? "Creates a VPC with public and private subnets across two zones. The NAT gateway is billed hourly."
+    : "Uses your account's existing default VPC. Public subnets only, no extra cost.";
+  $("ec2Placement").hidden = !selected.has("ec2");
+  $("ecsPlacement").hidden = !selected.has("ecs");
+  $("lambdaVpc").hidden = !(selected.has("lambda") && hasVpc && newVpc);
+  $("placementRow").hidden = $("ec2Placement").hidden && $("ecsPlacement").hidden && $("lambdaVpc").hidden;
+
+  for (const name of ["ec2Subnet", "ecsSubnet"]) {
+    const priv = document.querySelector(`input[name="${name}"][value="private"]`);
+    priv.disabled = !newVpc;
+    if (!newVpc && priv.checked) document.querySelector(`input[name="${name}"][value="public"]`).checked = true;
+  }
+  $("privateHint").hidden = !hasVpc || newVpc || (!selected.has("ec2") && !selected.has("ecs"));
+
+  syncAddonRequirements();
+  syncNameErrors();
+  renderTree(chosen, deps);
+
+  const projectOk = /^[a-z][a-z0-9-]{1,19}$/.test($("project").value);
+  const envOk = /^[a-z][a-z0-9-]{0,9}$/.test($("env").value);
+  $("projectError").hidden = projectOk;
+  $("envError").hidden = envOk;
+  $("project").setAttribute("aria-invalid", String(!projectOk));
+  $("env").setAttribute("aria-invalid", String(!envOk));
+  const busy = $("generate").dataset.busy === "1";
+  const ready = chosen.length > 0 && projectOk && envOk && namesValid() && !busy;
+  $("generate").disabled = !ready;
+  if ($("regenerate")) $("regenerate").disabled = !ready;
+}
+
+function syncAddonRequirements() {
+  const settings = collectSettings();
+  for (const opt of allOptions()) {
+    for (const f of opt.features) {
+      const box = $("groups").querySelector(`input[data-svc="${opt.id}"][data-feature="${f.id}"]`);
+      const desc = box.closest(".addon").querySelector(".addon-desc");
+      const unmet = Object.entries(f.requires_setting || {}).find(([k, v]) => k in settings && settings[k] !== v);
+      box.disabled = Boolean(unmet);
+      if (unmet) {
+        box.checked = false;
+        addons[opt.id]?.delete(f.id);
+        desc.textContent = f.requires_hint || `Needs ${unmet[0].replace(/_/g, " ")}: ${unmet[1]}.`;
+      } else {
+        desc.textContent = desc.dataset.desc;
+      }
+    }
+  }
+}
+
+function renderTree(chosen, deps) {
+  const tree = $("tree");
+  if (chosen.length === 0) {
+    tree.innerHTML = `<li class="empty">Select a service to start your bundle.</li>`;
+    $("bundleSummary").textContent = "Nothing selected yet.";
+    previousTree = new Set();
+    return;
+  }
+  const rows = [{ key: "root", text: "terraform-bundle/", cls: "folder" }];
+  for (const f of ROOT_FILES) rows.push({ key: f, text: f, cls: "d1" });
+  rows.push({ key: "modules/", text: "modules/", cls: "d1 folder" });
+  for (const [dep, needers] of deps) {
+    rows.push({ key: `m-${dep}`, text: `${dep}/`, cls: "d2 folder", note: `added for ${needers.join(", ")}` });
+  }
+  for (const id of chosen) {
+    const a = addonsOf(id).length;
+    const parts = [];
+    if (optionOf(id)?.multi) parts.push(namesOf(id).join(", "));
+    if (a) parts.push(`${a} add-on${a > 1 ? "s" : ""}`);
+    rows.push({ key: `m-${id}`, text: `${id}/`, cls: "d2 folder", note: parts.join(" · ") });
+  }
+
+  tree.innerHTML = rows.map(r => `
+    <li class="${r.cls}${previousTree.size && !previousTree.has(r.key) ? " fresh" : ""}">
+      <span>${r.cls.includes("folder") ? FOLDER_SVG : FILE_SVG}${esc(r.text)}</span>${r.note ? `<span class="note" title="${esc(r.note)}">${esc(r.note)}</span>` : ""}
+    </li>`).join("");
+  previousTree = new Set(rows.map(r => r.key));
+
+  const summary = chosen.map(id => countOf(id) > 1 ? `${labelOf(id)} ×${countOf(id)}` : labelOf(id));
+  const extra = deps.size ? ` plus ${[...deps.keys()].map(d => d.toUpperCase()).join(", ")}` : "";
+  $("bundleSummary").textContent = `${summary.join(", ")}${extra}`;
+}
+
+// ---------------------------------------------------------------- generate
+function collectSettings() {
+  const { deps } = bundleModules();
+  const s = {
+    project_name: $("project").value,
+    environment: $("env").value,
+    aws_region: $("region").value,
+  };
+  if (deps.has("vpc")) s.vpc_create = networkIsNew();
+  if (selected.has("ec2")) s.ec2_subnet_type = document.querySelector('input[name="ec2Subnet"]:checked').value;
+  if (selected.has("ecs")) s.ecs_subnet_type = document.querySelector('input[name="ecsSubnet"]:checked').value;
+  if (selected.has("lambda") && deps.has("vpc") && networkIsNew()) s.lambda_attach_to_vpc = $("lambdaInVpc").checked;
+  return s;
+}
+
+async function generate() {
+  const btn = $("generate");
+  const validate = $("validate").checked;
+  btn.dataset.busy = "1";
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span>Generating…`;
+  if ($("regenerate")) {
+    $("regenerate").disabled = true;
+    $("regenerate").innerHTML = `<span class="spinner" aria-hidden="true"></span>Regenerating…`;
+  }
+  $("working").hidden = false;
+  $("working").textContent = validate
+    ? "Building and checking with Terraform. The first run downloads the AWS provider and can take a minute or two; later runs take seconds."
+    : "Building the bundle…";
+
+  const multi = [...selected].filter(id => optionOf(id)?.multi);
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        services: [...selected],
+        names: Object.fromEntries(multi.map(id => [id, namesOf(id)])),
+        features: Object.fromEntries([...selected].map(id => [id, addonsOf(id)])),
+        settings: collectSettings(),
+        validate,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Server returned ${res.status}`);
+    renderResults(data);
+  } catch (err) {
+    $("results").hidden = false;
+    $("results").innerHTML = `<div class="result-card"><div class="error-box">The bundle wasn't generated: ${esc(err.message)}</div></div>`;
+  } finally {
+    btn.dataset.busy = "0";
+    btn.textContent = "Generate bundle";
+    $("working").hidden = true;
+    update();
+    $("results").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+}
+
+// After generation: rename each instance and rebuild the bundle with the new names.
+function renderRenamePanel() {
+  const panel = $("renamePanel");
+  if (!panel) return;
+  const multi = allOptions().filter(o => o.multi && selected.has(o.id));
+  panel.hidden = multi.length === 0;
+  $("renameGrid").innerHTML = multi.map(o => `
+    <div class="rename-svc">
+      <h4><span class="svc-badge" aria-hidden="true">${esc(badgeOf(o.id))}</span>${esc(o.label)}</h4>
+      <div class="names" data-names-for="${esc(o.id)}"></div>
+    </div>`).join("");
+  multi.forEach(o => renderNameLists(o.id));
+}
+
+function renderResults(data) {
+  const titles = {
+    passed: "Bundle ready",
+    skipped: "Bundle ready (not checked)",
+    failed: "The bundle didn't pass the Terraform checks",
+  };
+  const chips = { passed: "Validated", skipped: "Not checked", failed: "Failed" };
+  const subtitles = {
+    passed: `${data.files.length} files, checked with ${esc(data.tool || "Terraform")} in ${data.elapsed_seconds}s.`,
+    skipped: "Terraform checks were skipped. Run terraform validate before applying.",
+    failed: "Open the failed step below to see the error. No download is offered for a failing bundle.",
+  };
+
+  const steps = data.steps.length ? data.steps.map(step => {
+    const cls = step.exit_code === 0 ? "ok" : (step.advisory ? "warn" : "fail");
+    const sym = step.exit_code === 0 ? "✓" : (step.advisory ? "!" : "✕");
+    return `<details class="step" ${cls === "fail" ? "open" : ""}>
+      <summary><span class="mark ${cls}">${sym}</span><code>${esc(step.command)}</code></summary>
+      <pre>${esc(step.output || "No output.")}</pre>
+    </details>`;
+  }).join("") : `<p class="hint">${esc(data.reason || "No checks were run.")}</p>`;
+
+  const files = Object.keys(data.previews);
+  const modulesLine = data.modules.map(m => data.auto_added.includes(m) ? `${m} (added automatically)` : m).join(", ");
+
+  $("results").hidden = false;
+  $("results").innerHTML = `
+    <div class="result-card">
+      <div class="banner ${data.status}">
+        <div>
+          <div class="banner-title"><h2>${titles[data.status]}</h2><span class="status-chip">${chips[data.status]}</span></div>
+          <p>${subtitles[data.status]}</p>
+          <p>Modules: ${esc(modulesLine)}</p>
+        </div>
+        ${data.download_url ? `<a class="btn btn-dark" href="${data.download_url}" download>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v9M4 7l4 4 4-4M2.5 14h11"/></svg>
+          Download terraform-bundle.zip</a>` : ""}
+      </div>
+      <div class="rename" id="renamePanel">
+        <div class="rename-head">
+          <div>
+            <h3>Rename services</h3>
+            <p class="hint">Replace the default names (1, 2, …) with your own, such as <code>web</code> or <code>uploads</code>. Each name becomes part of the resource names: <code><span class="name-prefix"></span>&lt;name&gt;</code>.</p>
+          </div>
+          <button class="btn btn-accent" id="regenerate">Apply names &amp; regenerate</button>
+        </div>
+        <div class="rename-grid" id="renameGrid"></div>
+      </div>
+      <div class="result-body">
+        <div class="steps">
+          <h3>Checks</h3>
+          ${steps}
+        </div>
+        <div class="preview">
+          <h3>Preview</h3>
+          <div class="tabs" role="tablist">
+            ${files.map((f, i) => `<button class="tab" role="tab" aria-selected="${i === 0}" data-file="${esc(f)}">${esc(f)}</button>`).join("")}
+          </div>
+          <pre id="previewCode"></pre>
+        </div>
+      </div>
+    </div>`;
+
+  renderRenamePanel();
+  $("regenerate").addEventListener("click", generate);
+
+  const showFile = (name) => {
+    $("previewCode").textContent = data.previews[name];
+    $("results").querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.file === name)));
+  };
+  $("results").querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showFile(t.dataset.file)));
+  if (files.length) showFile(files[0]);
+}
+
+// ---------------------------------------------------------------- wiring
+document.querySelectorAll('input[name="network"], input[name="ec2Subnet"], input[name="ecsSubnet"]')
+  .forEach(r => r.addEventListener("change", update));
+["project", "env"].forEach(id => $(id).addEventListener("input", update));
+$("generate").addEventListener("click", generate);
+loadCatalog();
+</script>
+</body>
+</html>

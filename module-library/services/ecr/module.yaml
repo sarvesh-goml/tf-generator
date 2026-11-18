@@ -1,0 +1,68 @@
+name: ecr
+category: services
+display_name: ECR
+description: Private container registry with scan-on-push, encryption, immutable tags, and a lifecycle policy that cleans up old images.
+selectable: true
+ui_order: 1
+requires: []
+multi: true
+per_instance: [ecr_image_tag_mutability, ecr_keep_last_images, ecr_force_delete]
+instance_only:
+  repository_name: string
+providers: [aws]
+
+features:
+  - id: mutable_tags
+    label: Allow re-pushing tags
+    description: Lets you push "latest" (or any tag) again. Off = immutable tags.
+    variable: ecr_image_tag_mutability
+    value: MUTABLE
+  - id: force_delete
+    label: Delete with images
+    description: terraform destroy removes the repository even if it has images.
+    variable: ecr_force_delete
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  image_tag_mutability: var.ecr_image_tag_mutability
+  keep_last_images: var.ecr_keep_last_images
+  force_delete: var.ecr_force_delete
+
+root_variables:
+  ecr_image_tag_mutability:
+    type: string
+    default: IMMUTABLE
+    options: [IMMUTABLE, MUTABLE]
+    description: IMMUTABLE (recommended) or MUTABLE (needed if you re-push tags like latest).
+  ecr_keep_last_images:
+    type: number
+    default: 30
+    description: Number of most recent images to keep.
+  ecr_force_delete:
+    type: bool
+    default: false
+    description: Allow destroy even when the repository still has images.
+
+outputs:
+  ecr_repository_url:
+    value: module.ecr.repository_url
+    description: ECR repository URL (docker push target).
+
+readme_notes: |
+  Push an image after `terraform apply` (replace REGION and TAG):
+
+  ```bash
+  terraform output ecr_repository_url          # map of instance name => URL
+  REPO=<repository-url>
+  aws ecr get-login-password --region REGION | docker login --username AWS --password-stdin "${REPO%%/*}"
+  docker build -t "$REPO:TAG" .
+  docker push "$REPO:TAG"
+  ```
+
+  Tags are IMMUTABLE by default, so push a new tag (e.g. a version or git SHA) for every
+  build instead of overwriting `latest`.
+
+  Changing later: tag mutability and lifecycle settings update in place. Changing a
+  `repository_name` in `ecr_instances` replaces the repository (it must be empty, or set
+  `ecr_force_delete = true`).

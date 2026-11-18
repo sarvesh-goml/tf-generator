@@ -1,0 +1,161 @@
+name: lambda
+category: deployment
+display_name: Lambda
+description: Lambda function packaged from a source folder, with its own IAM role, log group with retention, and optional VPC attachment.
+selectable: true
+ui_order: 3
+requires: []
+multi: true
+per_instance: [lambda_source_dir, lambda_runtime, lambda_handler, lambda_architecture, lambda_memory_size, lambda_timeout, lambda_environment_variables, lambda_log_retention_days, lambda_attach_to_vpc, lambda_enable_function_url, lambda_function_url_auth, lambda_schedule_expression, lambda_enable_xray]
+instance_only:
+  function_name: string
+providers: [aws, archive]
+provider_versions:
+  aws: ">= 6.28, < 7.0"     # function URL permissions (AWS change, Oct 2025)
+
+features:
+  - id: function_url
+    label: Function URL
+    description: Public HTTPS endpoint for the function.
+    variable: lambda_enable_function_url
+    value: true
+  - id: schedule
+    label: Run on a schedule
+    description: Invoke every hour via EventBridge (change the rate in tfvars).
+    variable: lambda_schedule_expression
+    value: rate(1 hour)
+  - id: xray
+    label: X-Ray tracing
+    description: Request tracing in AWS X-Ray.
+    variable: lambda_enable_xray
+    value: true
+
+inputs:
+  name_prefix: local.name_prefix
+  enable_function_url: var.lambda_enable_function_url
+  function_url_auth_type: var.lambda_function_url_auth
+  schedule_expression: var.lambda_schedule_expression
+  tracing_mode: 'var.lambda_enable_xray ? "Active" : "PassThrough"'
+  source_dir: var.lambda_source_dir
+  runtime: var.lambda_runtime
+  handler: var.lambda_handler
+  architecture: var.lambda_architecture
+  memory_size: var.lambda_memory_size
+  timeout: var.lambda_timeout
+  environment_variables: "merge({ ENVIRONMENT = var.environment }, var.lambda_environment_variables)"
+  log_retention_days: var.lambda_log_retention_days
+
+optional:
+  vpc:
+    inputs:
+      attach_to_vpc: var.lambda_attach_to_vpc
+      vpc_id: module.vpc.vpc_id
+      subnet_ids: module.vpc.private_subnet_ids
+    root_variables:
+      lambda_attach_to_vpc:
+        type: bool
+        default: false
+        description: "Run the Lambda in the VPC's private subnets (only needed to reach private resources). Requires vpc_create = true or an existing VPC with private subnets."
+  s3:
+    inputs:
+      s3_bucket_arns: "[for m in module.s3 : m.bucket_arn]"
+  dynamodb:
+    inputs:
+      dynamodb_table_arns: "[for m in module.dynamodb : m.table_arn]"
+
+root_variables:
+  lambda_source_dir:
+    type: string
+    default: null
+    description: Path to your function code folder. Null uses the sample handler in modules/lambda/src.
+  lambda_runtime:
+    type: string
+    default: python3.12
+    description: Lambda runtime.
+  lambda_handler:
+    type: string
+    default: handler.lambda_handler
+    description: Handler entrypoint (file.function).
+  lambda_architecture:
+    type: string
+    default: x86_64
+    options: [x86_64, arm64]
+    description: CPU architecture (arm64 is cheaper).
+  lambda_memory_size:
+    type: number
+    default: 128
+    description: Memory in MB.
+  lambda_timeout:
+    type: number
+    default: 10
+    description: Timeout in seconds.
+  lambda_environment_variables:
+    type: map(string)
+    default: {}
+    description: Extra environment variables for the function.
+  lambda_log_retention_days:
+    type: number
+    default: 14
+    description: CloudWatch log retention in days.
+  lambda_enable_function_url:
+    type: bool
+    default: false
+    description: Give the function its own HTTPS endpoint.
+  lambda_function_url_auth:
+    type: string
+    default: NONE
+    options: [NONE, AWS_IAM]
+    description: NONE = anyone with the URL can call it. AWS_IAM = callers must sign requests with AWS credentials.
+  lambda_schedule_expression:
+    type: string
+    default: null
+    description: Run on a schedule, e.g. "rate(1 hour)", "rate(5 minutes)", "cron(0 9 * * ? *)". Null means no schedule.
+  lambda_enable_xray:
+    type: bool
+    default: false
+    description: Turn on AWS X-Ray request tracing.
+
+outputs:
+  lambda_function_name:
+    value: module.lambda.function_name
+    description: Lambda function name.
+  lambda_function_arn:
+    value: module.lambda.function_arn
+    description: Lambda function ARN.
+  lambda_function_url:
+    value: module.lambda.function_url
+    description: HTTPS endpoint of the function (if enabled).
+
+readme_notes: |
+  The function ships with a sample handler in `modules/lambda/src/handler.py`. Point
+  `lambda_source_dir` at your own code folder (relative to this bundle, e.g. `"./src"`)
+  and Terraform zips and uploads it on every change. The zip is written to `.build/`.
+  With several functions, give each its own code in `lambda_instances`:
+
+  ```hcl
+  lambda_instances = {
+    orders  = { source_dir = "./src/orders" }
+    reports = { source_dir = "./src/reports", timeout = 60 }
+  }
+  ```
+
+  Test after apply:
+
+  ```bash
+  terraform output lambda_function_name       # map of instance name => function name
+  aws lambda invoke --function-name <function-name> out.json && cat out.json
+  ```
+
+  Function URL: with `lambda_function_url_auth = "NONE"` anyone who has the URL can call
+  the function, so add your own checks in the code if it does anything sensitive. Try it:
+
+  ```bash
+  terraform output lambda_function_url        # map of instance name => URL
+  curl <function-url>
+  ```
+
+  Schedule: `rate(1 hour)`, `rate(5 minutes)`, or `cron(0 9 * * ? *)` (09:00 UTC daily).
+  Cron expressions in EventBridge use UTC and six fields.
+
+  Changing later: code, memory, timeout, runtime and environment variables update in
+  place. `lambda_attach_to_vpc` updates in place but can take a few minutes.

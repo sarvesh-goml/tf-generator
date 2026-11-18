@@ -1,0 +1,12 @@
+# Local provider cache holds Windows binaries (hundreds of MB); the container builds its own.
+.plugin-cache/
+**/.terraform/
+**/.terraform.lock.hcl
+**/__pycache__/
+*.pyc
+out/
+.venv/
+venv/
+.git/
+Dockerfile
+.dockerignore
