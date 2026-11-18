@@ -14,6 +14,7 @@ API
                                   "features": {"lambda": ["function_url"]}, "settings": {...}, "validate": true}
     GET  /api/download/<job_id>  the generated zip
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,9 +69,16 @@ def terraform_info() -> dict:
     if not binary:
         return {"available": False, "version": None}
     try:
-        out = subprocess.run([binary, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+        out = subprocess.run(
+            [binary, "version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
         version = out.stdout.splitlines()[0] if out.stdout else Path(binary).name
-    except Exception:  # noqa: BLE001
+    except Exception:
         version = Path(binary).name
     return {"available": True, "version": version}
 
@@ -110,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"  {self.command} {self.path} -> {args[1] if len(args) > 1 else ''}\n")
 
     # ------------------------------------------------------------------ routes
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         if self.path in ("/", "/index.html"):
             return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
 
@@ -131,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "Not found"}, 404)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         if self.path != "/api/generate":
             return self._send_json({"error": "Not found"}, 404)
 
@@ -157,27 +165,39 @@ class Handler(BaseHTTPRequestHandler):
         # "counts": {"ec2": 3} -> ec2_instances = {"1" = {}, "2" = {}, "3" = {}}
         counts = request.get("counts") or {}
         if not isinstance(counts, dict):
-            return self._send_json({"error": "counts must be an object like {\"ec2\": 2}."}, 400)
+            return self._send_json({"error": 'counts must be an object like {"ec2": 2}.'}, 400)
         for svc, n in counts.items():
             if svc not in services:
                 continue
             if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_INSTANCES:
-                return self._send_json({"error": f"Count for {svc} must be a whole number from 1 to {MAX_INSTANCES}."}, 400)
+                return self._send_json(
+                    {"error": f"Count for {svc} must be a whole number from 1 to {MAX_INSTANCES}."},
+                    400,
+                )
             overrides[f"{svc}_instances"] = {str(i): {} for i in range(1, n + 1)}
 
         # "names": {"ec2": ["web", "worker"]} -> ec2_instances = {"web" = {}, "worker" = {}}
         # Takes precedence over "counts": the number of names is the number of instances.
         names = request.get("names") or {}
         if not isinstance(names, dict):
-            return self._send_json({"error": "names must be an object like {\"ec2\": [\"web\", \"worker\"]}."}, 400)
+            return self._send_json(
+                {"error": 'names must be an object like {"ec2": ["web", "worker"]}.'}, 400
+            )
         for svc, keys in names.items():
             if svc not in services:
                 continue
             if not isinstance(keys, list) or not 1 <= len(keys) <= MAX_INSTANCES:
-                return self._send_json({"error": f"names for {svc} must be a list of 1 to {MAX_INSTANCES} names."}, 400)
+                return self._send_json(
+                    {"error": f"names for {svc} must be a list of 1 to {MAX_INSTANCES} names."}, 400
+                )
             for key in keys:
                 if not isinstance(key, str) or not re.fullmatch(INSTANCE_NAME, key):
-                    return self._send_json({"error": f"Invalid name for {svc}: {key!r}. Use 1-15 lowercase letters, digits and hyphens, starting with a letter or digit."}, 400)
+                    return self._send_json(
+                        {
+                            "error": f"Invalid name for {svc}: {key!r}. Use 1-15 lowercase letters, digits and hyphens, starting with a letter or digit."
+                        },
+                        400,
+                    )
             if len(set(keys)) != len(keys):
                 return self._send_json({"error": f"Each {svc} name must be unique."}, 400)
             overrides[f"{svc}_instances"] = {key: {} for key in keys}
@@ -185,11 +205,14 @@ class Handler(BaseHTTPRequestHandler):
         # "features": {"ec2": ["elastic_ip"]} -> ec2_enable_elastic_ip = true
         features = request.get("features") or {}
         if not isinstance(features, dict):
-            return self._send_json({"error": "features must be an object like {\"ec2\": [\"elastic_ip\"]}."}, 400)
+            return self._send_json(
+                {"error": 'features must be an object like {"ec2": ["elastic_ip"]}.'}, 400
+            )
         if features:
             known = {
                 o["id"]: {f["id"]: f for f in o["features"]}
-                for g in compose.catalog()["groups"] for o in g["options"]
+                for g in compose.catalog()["groups"]
+                for o in g["options"]
             }
             for svc, ids in features.items():
                 if svc not in services:
@@ -210,37 +233,41 @@ class Handler(BaseHTTPRequestHandler):
             started = time.time()
             try:
                 result = compose.build_bundle(
-                    services, job_dir, overrides,
+                    services,
+                    job_dir,
+                    overrides,
                     run_validation=bool(request.get("validate", True)),
                     strict_overrides=False,
                 )
             except compose.ComposeError as exc:
                 return self._send_json({"error": str(exc)}, 400)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 return self._send_json({"error": f"Generation failed: {exc}"}, 500)
             elapsed = round(time.time() - started, 1)
 
         bundle_dir = Path(result["bundle_dir"])
         files = sorted(
-            p.relative_to(bundle_dir).as_posix()
-            for p in bundle_dir.rglob("*") if p.is_file()
+            p.relative_to(bundle_dir).as_posix() for p in bundle_dir.rglob("*") if p.is_file()
         )
         previews = {
             name: (bundle_dir / name).read_text(encoding="utf-8")
-            for name in PREVIEW_FILES if (bundle_dir / name).exists()
+            for name in PREVIEW_FILES
+            if (bundle_dir / name).exists()
         }
-        self._send_json({
-            "status": result["status"],
-            "tool": result.get("tool"),
-            "reason": result.get("reason"),
-            "modules": result["modules"],
-            "auto_added": result["auto_added"],
-            "steps": result["steps"],
-            "files": files,
-            "previews": previews,
-            "elapsed_seconds": elapsed,
-            "download_url": f"/api/download/{job_id}" if result.get("zip_path") else None,
-        })
+        self._send_json(
+            {
+                "status": result["status"],
+                "tool": result.get("tool"),
+                "reason": result.get("reason"),
+                "modules": result["modules"],
+                "auto_added": result["auto_added"],
+                "steps": result["steps"],
+                "files": files,
+                "previews": previews,
+                "elapsed_seconds": elapsed,
+                "download_url": f"/api/download/{job_id}" if result.get("zip_path") else None,
+            }
+        )
 
 
 def main() -> None:
@@ -252,7 +279,9 @@ def main() -> None:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     tf = terraform_info()
     print("Terraform template generator demo")
-    print(f"  Terraform: {tf['version'] if tf['available'] else 'NOT FOUND (bundles will be generated without validation)'}")
+    print(
+        f"  Terraform: {tf['version'] if tf['available'] else 'NOT FOUND (bundles will be generated without validation)'}"
+    )
     print(f"  Open:      http://{args.host}:{args.port}")
     print("  Stop:      Ctrl+C\n")
     server = ThreadingHTTPServer((args.host, args.port), Handler)

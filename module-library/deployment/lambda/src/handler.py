@@ -1,5 +1,6 @@
 """Placeholder Lambda handler. Replace this folder with your own code,
 or point the lambda_source_dir variable at your source directory."""
+
 import json
 import os
 

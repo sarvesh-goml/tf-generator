@@ -281,13 +281,13 @@ ranges), `BASE_VARIABLES` (variables every bundle gets), `UI_CATEGORIES` (group 
 ```python
 from compose import build_bundle, catalog
 
-catalog()                                         # feed the UI
+catalog()  # feed the UI
 result = build_bundle(
-    ["ec2", "s3"],                                # checked boxes
-    output_dir="/tmp/job-123",                    # unique per request
-    overrides={"aws_region": "ap-south-1"},       # optional form values
+    ["ec2", "s3"],  # checked boxes
+    output_dir="/tmp/job-123",  # unique per request
+    overrides={"aws_region": "ap-south-1"},  # optional form values
 )
-result["status"]    # "passed" | "failed" | "skipped"
+result["status"]  # "passed" | "failed" | "skipped"
 result["zip_path"]  # send this file to the user
 ```
 
