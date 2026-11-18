@@ -25,11 +25,11 @@ jobs:
     timeout-minutes: 10
     continue-on-error: ${{ vars.GONINJA_ENFORCE != 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 5
     continue-on-error: ${{ vars.GONINJA_ENFORCE != 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install gitleaks
@@ -61,7 +61,7 @@ jobs:
     continue-on-error: ${{ vars.GONINJA_ENFORCE != 'true' }}
     container: semgrep/semgrep:1.165.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Semgrep (new findings only on PRs)
@@ -79,8 +79,8 @@ jobs:
     timeout-minutes: 5
     continue-on-error: ${{ vars.GONINJA_ENFORCE != 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install pip-audit
@@ -92,10 +92,10 @@ jobs:
     timeout-minutes: 15
     continue-on-error: ${{ vars.GONINJA_ENFORCE != 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -109,7 +109,7 @@ jobs:
       - name: SonarQube scan + quality gate
         # Community Build has no PR analysis: PR scans only when SONAR_PR_ANALYSIS=true (Developer Edition+)
         if: github.event_name == 'push' || vars.SONAR_PR_ANALYSIS == 'true'
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
