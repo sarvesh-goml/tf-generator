@@ -19,6 +19,7 @@ CLI use:
     python compose.py ec2 s3 dynamodb -o ./out
     python compose.py ecs ecr --set project_name=shop --set aws_region=ap-south-1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -75,7 +76,7 @@ BASE_VARIABLES = {
         "validation": {
             "condition": (
                 'alltrue([for k in keys(var.additional_tags) : !contains(["project", "environment", "managedby"], lower(k))]) '
-                '&& length(distinct([for k in keys(var.additional_tags) : lower(k)])) == length(var.additional_tags)'
+                "&& length(distinct([for k in keys(var.additional_tags) : lower(k)])) == length(var.additional_tags)"
             ),
             "error_message": "additional_tags must not include Project, Environment or ManagedBy in any letter case (they are added automatically), or two keys that differ only by case. AWS IAM treats tag keys as case-insensitive.",
         },
@@ -159,7 +160,9 @@ def _lint_library(modules: dict[str, dict]) -> None:
                 problems.append(f"{name}: manifest input '{key}' is not a variable of the module")
         for var, has_default in variables.items():
             if not has_default and var not in m["inputs"]:
-                problems.append(f"{name}: required module variable '{var}' is not set in manifest inputs")
+                problems.append(
+                    f"{name}: required module variable '{var}' is not set in manifest inputs"
+                )
         root_all = dict(m["root_variables"])
         for extra in m["optional"].values():
             root_all.update(extra.get("root_variables", {}))
@@ -173,7 +176,9 @@ def _lint_library(modules: dict[str, dict]) -> None:
             if var not in root_all:
                 problems.append(f"{name}: feature '{fid}' uses unknown root variable '{var}'")
             elif root_all[var].get("options") and f.get("value") not in root_all[var]["options"]:
-                problems.append(f"{name}: feature '{fid}' value {f.get('value')!r} is not one of {root_all[var]['options']}")
+                problems.append(
+                    f"{name}: feature '{fid}' value {f.get('value')!r} is not one of {root_all[var]['options']}"
+                )
         if m.get("multi"):
             all_root = dict(m["root_variables"])
             for extra in m["optional"].values():
@@ -315,11 +320,13 @@ def _attributes(pairs: list[tuple[str, str]], indent: int = 1) -> list[str]:
 
 def _variable_block(name: str, spec: dict) -> str:
     lines = [f'variable "{name}" {{']
-    lines += _attributes([
-        ("description", hcl_value(spec.get("description", ""))),
-        ("type", spec["type"]),
-        ("default", hcl_value(spec.get("default"), 1)),
-    ])
+    lines += _attributes(
+        [
+            ("description", hcl_value(spec.get("description", ""))),
+            ("type", spec["type"]),
+            ("default", hcl_value(spec.get("default"), 1)),
+        ]
+    )
     validation = spec.get("validation")
     if not validation and spec.get("options"):
         allowed = ", ".join(hcl_value(o) for o in spec["options"])
@@ -330,10 +337,13 @@ def _variable_block(name: str, spec: dict) -> str:
     if validation:
         lines.append("")
         lines.append("  validation {")
-        lines += _attributes([
-            ("condition", validation["condition"]),
-            ("error_message", hcl_value(validation["error_message"])),
-        ], indent=2)
+        lines += _attributes(
+            [
+                ("condition", validation["condition"]),
+                ("error_message", hcl_value(validation["error_message"])),
+            ],
+            indent=2,
+        )
         lines.append("  }")
     lines.append("}")
     return "\n".join(lines)
@@ -345,9 +355,9 @@ def _tfvars_line(name: str, spec: dict) -> str:
         comment += "\n# Per-instance settings: " + ", ".join(spec["instance_fields"])
         ex = spec.get("instance_example")
         if ex:
-            comment += f'\n# Example: {name} = {{ web = {{}}, worker = {{ {ex} = ... }} }}'
+            comment += f"\n# Example: {name} = {{ web = {{}}, worker = {{ {ex} = ... }} }}"
     elif "instance_fields" in spec:
-        comment += f'\n# Example: {name} = {{ web = {{}}, worker = {{}} }}' 
+        comment += f"\n# Example: {name} = {{ web = {{}}, worker = {{}} }}"
     if spec.get("options"):
         comment += "\n# Options: " + " | ".join(hcl_value(o) for o in spec["options"])
     if spec.get("default") is None:
@@ -374,18 +384,22 @@ def _make_multi(name: str, m: dict, inputs: dict, root_vars: dict) -> tuple[dict
     per_instance = [v for v in m.get("per_instance", []) if v in root_vars]
     instance_only = m.get("instance_only", {})
 
-    fields = {v[len(prefix):]: root_vars[v]["type"] for v in per_instance}
+    fields = {v[len(prefix) :]: root_vars[v]["type"] for v in per_instance}
     fields.update({k: t for k, t in instance_only.items()})
-    object_type = "map(object({\n" + "\n".join(
-        f"    {k} = optional({t})" for k, t in fields.items()
-    ) + "\n  }))" if fields else "map(object({}))"
+    object_type = (
+        "map(object({\n"
+        + "\n".join(f"    {k} = optional({t})" for k, t in fields.items())
+        + "\n  }))"
+        if fields
+        else "map(object({}))"
+    )
 
     new_inputs = {}
     for key, expr in inputs.items():
         if expr == "local.name_prefix":
             expr = '"${local.name_prefix}-${each.key}"'
         for v in per_instance:
-            short = v[len(prefix):]
+            short = v[len(prefix) :]
             expr = re.sub(
                 rf"\bvar\.{v}\b",
                 f"(each.value.{short} != null ? each.value.{short} : var.{v})",
@@ -419,13 +433,22 @@ def _make_multi(name: str, m: dict, inputs: dict, root_vars: dict) -> tuple[dict
     new_root_vars = {inst_var: inst_spec}
     for v, spec in root_vars.items():
         if v in per_instance:
-            spec = {**spec, "description": spec.get("description", "") + " Default for every instance; can be overridden per instance."}
+            spec = {
+                **spec,
+                "description": spec.get("description", "")
+                + " Default for every instance; can be overridden per instance.",
+            }
         new_root_vars[v] = spec
     return new_inputs, new_root_vars, f"var.{inst_var}"
 
 
-def generate(selected: list[str], out_dir: Path, overrides: dict | None = None,
-             library_dir: Path = LIBRARY_DIR, strict_overrides: bool = True) -> dict:
+def generate(
+    selected: list[str],
+    out_dir: Path,
+    overrides: dict | None = None,
+    library_dir: Path = LIBRARY_DIR,
+    strict_overrides: bool = True,
+) -> dict:
     """Write the bundle to out_dir. Returns metadata about what was generated."""
     modules = load_library(library_dir)
     order = resolve(selected, modules)
@@ -440,7 +463,8 @@ def generate(selected: list[str], out_dir: Path, overrides: dict | None = None,
     # Copy each module (without its manifest) into the bundle.
     for name in order:
         shutil.copytree(
-            modules[name]["_path"], out_dir / "modules" / name,
+            modules[name]["_path"],
+            out_dir / "modules" / name,
             ignore=shutil.ignore_patterns("module.yaml", "__pycache__", ".terraform", ".build"),
         )
 
@@ -479,16 +503,25 @@ def generate(selected: list[str], out_dir: Path, overrides: dict | None = None,
             description = spec.get("description", "")
             if for_each:
                 # One value per instance, keyed by instance name.
-                value = "{ for k, m in module.%s : k => %s }" % (name, value.replace(f"module.{name}.", "m."))
-                description = description.rstrip(".") + ", per instance (map of instance name => value)."
-            output_blocks.append("\n".join(
-                [f'output "{out_name}" {{']
-                + _attributes([
-                    ("description", hcl_value(description)),
-                    ("value", value),
-                ])
-                + ["}"]
-            ))
+                value = "{ for k, m in module.%s : k => %s }" % (
+                    name,
+                    value.replace(f"module.{name}.", "m."),
+                )
+                description = (
+                    description.rstrip(".") + ", per instance (map of instance name => value)."
+                )
+            output_blocks.append(
+                "\n".join(
+                    [f'output "{out_name}" {{']
+                    + _attributes(
+                        [
+                            ("description", hcl_value(description)),
+                            ("value", value),
+                        ]
+                    )
+                    + ["}"]
+                )
+            )
 
     # Apply default overrides coming from the UI/CLI.
     for key, value in overrides.items():
@@ -503,7 +536,8 @@ def generate(selected: list[str], out_dir: Path, overrides: dict | None = None,
     _check_references(module_blocks + output_blocks, declared, bundle)
 
     header = "# Generated by the Terraform template generator on {}.\n# Services: {}\n\n".format(
-        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), ", ".join(order))
+        datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"), ", ".join(order)
+    )
 
     # versions.tf: a module may need a newer provider than the default range
     # (manifest key provider_versions); the strictest one wins.
@@ -520,37 +554,40 @@ def generate(selected: list[str], out_dir: Path, overrides: dict | None = None,
             f'      version = "{versions[p]}"',
             "    }",
         ]
-    _write(out_dir / "versions.tf", 
+    _write(
+        out_dir / "versions.tf",
         "terraform {\n"
         f'  required_version = "{TERRAFORM_REQUIRED_VERSION}"\n\n'
-        "  required_providers {\n" + "\n".join(provider_lines) + "\n  }\n}\n"
+        "  required_providers {\n" + "\n".join(provider_lines) + "\n  }\n}\n",
     )
 
     # providers.tf
-    _write(out_dir / "providers.tf", 
+    _write(
+        out_dir / "providers.tf",
         'provider "aws" {\n'
         "  region = var.aws_region\n\n"
         "  # Common tags land on every taggable resource automatically.\n"
         "  default_tags {\n"
         "    tags = local.common_tags\n"
         "  }\n"
-        "}\n"
+        "}\n",
     )
 
     # backend.tf
-    _write(out_dir / "backend.tf", 
+    _write(
+        out_dir / "backend.tf",
         "# Remote state (recommended for teams). Uncomment, fill in, then run `terraform init`.\n"
         "# use_lockfile needs Terraform >= 1.10; on older versions use dynamodb_table instead.\n"
         "#\n"
         "# terraform {\n"
-        "#   backend \"s3\" {\n"
-        "#     bucket       = \"my-terraform-state-bucket\"\n"
-        "#     key          = \"myapp/dev/terraform.tfstate\"\n"
-        "#     region       = \"us-east-1\"\n"
+        '#   backend "s3" {\n'
+        '#     bucket       = "my-terraform-state-bucket"\n'
+        '#     key          = "myapp/dev/terraform.tfstate"\n'
+        '#     region       = "us-east-1"\n'
         "#     encrypt      = true\n"
         "#     use_lockfile = true\n"
         "#   }\n"
-        "# }\n"
+        "# }\n",
     )
 
     # main.tf
@@ -610,8 +647,8 @@ def _tfvars_header(bundle: set[str]) -> str:
         "#   3. terraform init && terraform plan && terraform apply",
         "#",
         "# You can change any value later: edit, run `terraform plan`, review, then",
-        "# `terraform apply`. Watch the plan for \"must be replaced\", which means the",
-        "# resource is deleted and recreated (see README.md, \"Changing settings later\").",
+        '# `terraform apply`. Watch the plan for "must be replaced", which means the',
+        '# resource is deleted and recreated (see README.md, "Changing settings later").',
     ]
     if "vpc" in bundle:
         lines += [
@@ -622,7 +659,9 @@ def _tfvars_header(bundle: set[str]) -> str:
             "#   vpc_create = false + vpc_existing_id     -> your existing VPC and subnet IDs",
             "# Then pick public or private per service with the *_subnet_type variables.",
         ]
-    lines.append("# =============================================================================\n")
+    lines.append(
+        "# =============================================================================\n"
+    )
     return "\n".join(lines)
 
 
@@ -645,7 +684,8 @@ def _readme(order: list[str], auto_added: list[str], modules: dict) -> str:
     )
     notes = "\n\n".join(
         f"### {modules[n].get('display_name', n)}\n\n{modules[n]['readme_notes'].strip()}"
-        for n in order if modules[n]["readme_notes"].strip()
+        for n in order
+        if modules[n]["readme_notes"].strip()
     )
     return f"""# Terraform bundle
 
@@ -714,7 +754,9 @@ Lambdas. Plan such changes for a maintenance window. Service-specific details ar
 # Validation
 # ---------------------------------------------------------------------------
 def _run(cmd: list[str], cwd: Path) -> dict:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     return {
         "command": " ".join([Path(cmd[0]).name] + cmd[1:]),
         "exit_code": proc.returncode,
@@ -743,31 +785,43 @@ def validate(bundle_dir: Path, tf_binary: str | None = None) -> dict:
                 lint["advisory"] = True
                 steps.append(lint)
             if shutil.which("checkov"):
-                scan = _run(["checkov", "-d", ".", "--quiet", "--compact", "--framework", "terraform"], work)
+                scan = _run(
+                    ["checkov", "-d", ".", "--quiet", "--compact", "--framework", "terraform"], work
+                )
                 scan["advisory"] = True
                 steps.append(scan)
 
     blocking = [s for s in steps if not s.get("advisory")]
     status = "passed" if all(s["exit_code"] == 0 for s in blocking) else "failed"
-    version = subprocess.run([tf, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.splitlines()[0]
+    version = subprocess.run(
+        [tf, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace"
+    ).stdout.splitlines()[0]
     return {"status": status, "tool": version, "steps": steps}
 
 
 # ---------------------------------------------------------------------------
 # Public entrypoint
 # ---------------------------------------------------------------------------
-def build_bundle(selected: list[str], output_dir: str | Path, overrides: dict | None = None,
-                 run_validation: bool = True, make_zip: bool = True,
-                 tf_binary: str | None = None, library_dir: Path = LIBRARY_DIR,
-                 strict_overrides: bool = True) -> dict:
+def build_bundle(
+    selected: list[str],
+    output_dir: str | Path,
+    overrides: dict | None = None,
+    run_validation: bool = True,
+    make_zip: bool = True,
+    tf_binary: str | None = None,
+    library_dir: Path = LIBRARY_DIR,
+    strict_overrides: bool = True,
+) -> dict:
     """strict_overrides=False silently ignores overrides for variables that are not
     in this bundle (e.g. ec2_subnet_type when EC2 isn't selected). Used by the web UI."""
     output_dir = Path(output_dir)
     bundle_dir = output_dir / "terraform-bundle"
     meta = generate(selected, bundle_dir, overrides, library_dir, strict_overrides)
 
-    report = validate(bundle_dir, tf_binary) if run_validation else {"status": "skipped", "steps": []}
-    report["generated_at"] = datetime.now(timezone.utc).isoformat()
+    report = (
+        validate(bundle_dir, tf_binary) if run_validation else {"status": "skipped", "steps": []}
+    )
+    report["generated_at"] = datetime.now(UTC).isoformat()
     report.update(meta)
     _write(bundle_dir / "validation_report.json", json.dumps(report, indent=2) + "\n")
 
@@ -786,12 +840,22 @@ def _parse_override(item: str) -> tuple[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Compose a Terraform bundle from the module library.")
+    parser = argparse.ArgumentParser(
+        description="Compose a Terraform bundle from the module library."
+    )
     parser.add_argument("services", nargs="*", help="Services to include, e.g. ec2 s3 dynamodb")
     parser.add_argument("-o", "--output", default="./out", help="Output directory (default ./out)")
-    parser.add_argument("--set", dest="overrides", action="append", type=_parse_override, default=[],
-                        help="Override a variable default, e.g. --set aws_region=ap-south-1")
-    parser.add_argument("--catalog", action="store_true", help="Print the UI catalog as JSON and exit")
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        type=_parse_override,
+        default=[],
+        help="Override a variable default, e.g. --set aws_region=ap-south-1",
+    )
+    parser.add_argument(
+        "--catalog", action="store_true", help="Print the UI catalog as JSON and exit"
+    )
     parser.add_argument("--no-validate", action="store_true", help="Skip terraform validation")
     parser.add_argument("--no-zip", action="store_true", help="Do not create a zip")
     parser.add_argument("--tf-binary", help="Path to terraform or tofu (default: search PATH)")
@@ -804,8 +868,11 @@ def main() -> int:
         if not args.services:
             parser.error("give at least one service, or use --catalog")
         result = build_bundle(
-            args.services, args.output, dict(args.overrides),
-            run_validation=not args.no_validate, make_zip=not args.no_zip,
+            args.services,
+            args.output,
+            dict(args.overrides),
+            run_validation=not args.no_validate,
+            make_zip=not args.no_zip,
             tf_binary=args.tf_binary,
         )
     except ComposeError as exc:

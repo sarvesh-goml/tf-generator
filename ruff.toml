@@ -1,0 +1,33 @@
+# Single source of truth for lint/format. Used by pre-commit, CI, IDE and SonarQube import.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["migrations", ".venv", "build", "dist"]
+
+[lint]
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes (unused imports/variables)
+  "I",        # import sorting
+  "B",        # bugbear: likely bugs
+  "UP",       # pyupgrade
+  "N",        # naming
+  "C4",       # comprehensions
+  "SIM",      # simplify
+  "S",        # bandit security rules
+  "C90",      # complexity
+  "PL",       # pylint subset
+  "RUF",
+]
+ignore = [
+  "E501",     # line length handled by formatter
+  "PLR0913",  # too many args: noisy for FastAPI/Django handlers
+]
+
+[lint.mccabe]
+max-complexity = 12
+
+[lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "PLR2004", "S105", "S106"]   # assert, magic numbers, test creds
+
+[format]
+quote-style = "double"

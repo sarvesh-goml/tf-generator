@@ -1,0 +1,5 @@
+failure-threshold: warning
+trustedRegistries:
+  - docker.io
+  - public.ecr.aws
+  - "*.dkr.ecr.*.amazonaws.com"

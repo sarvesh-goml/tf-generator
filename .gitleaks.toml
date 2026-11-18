@@ -1,0 +1,10 @@
+# Extends the built-in gitleaks rules. Add allowlists here, never disable the hook.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known safe paths and test fixtures"
+paths = [
+  '''tests/fixtures/.*''',
+  '''.*\.example$''',
+]

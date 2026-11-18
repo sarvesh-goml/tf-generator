@@ -1,0 +1,9 @@
+
+# Weakening a quality gate needs DevOps review. Replace with your team handle.
+.pre-commit-config.yaml   @sarvesh-goml
+ruff.toml                 @sarvesh-goml
+.gitleaks.toml            @sarvesh-goml
+.trivyignore              @sarvesh-goml
+.zap/                     @sarvesh-goml
+sonar-project.properties  @sarvesh-goml
+.github/                  @sarvesh-goml
