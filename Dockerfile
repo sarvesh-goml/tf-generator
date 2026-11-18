@@ -4,7 +4,7 @@
 #   docker run --rm -p 8080:8080 -v tf-plugin-cache:/app/.plugin-cache tf-generator
 #   # then open http://localhost:8080
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ARG TERRAFORM_VERSION=1.16.2
 ARG TARGETARCH=amd64
