@@ -1,0 +1,2 @@
+# One CVE per line. Every entry needs: reason, owner, expiry date. Reviewed monthly.
+# CVE-2024-XXXXX  # not reachable: we don't use feature X | owner: @name | expires: 2027-01-31

@@ -1,0 +1,6 @@
+version=1.0.0
+onboarded=2026-11-18
+deploy=none
+has_docker=1
+sonar_edition=community
+codeowners=@sarvesh-goml

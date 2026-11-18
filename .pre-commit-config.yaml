@@ -1,0 +1,47 @@
+# GoNinja quality hooks
+# Budget: commit hooks < 5s, push hooks < 30s. If a hook gets slower, move it to CI.
+# After first install run:  pre-commit autoupdate  (pins every hook to its latest release)
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # --- Hygiene: cheap, catches real breakage ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^(helm|charts)/.*templates/   # Helm templates are not plain YAML
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: no-commit-to-branch          # nobody commits straight to main
+        args: [--branch, main, --branch, master]
+
+  # --- Lint + format: the same rules SonarQube imports (see sonar-project.properties) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # --- Secrets: staged changes only, so it stays instant ---
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # --- SAST: on push, not commit; keeps commits fast, still catches issues before the PR ---
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.99.0
+    hooks:
+      - id: semgrep
+        stages: [pre-push]
+        args: [--config, p/python, --error, --skip-unknown-extensions, --metrics=off]
